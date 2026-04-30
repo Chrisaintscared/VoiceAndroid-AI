@@ -1,0 +1,21 @@
+--index-url https://pypi.org/simple
+--extra-index-url https://download.pytorch.org/whl/cpu
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+python-multipart==0.0.9
+psycopg2-binary==2.9.9
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
+torch==2.2.2+cpu
+torchaudio==2.2.2+cpu
+speechbrain==1.0.1
+huggingface_hub==0.23.0
+numpy<2.0.0
+scipy==1.11.4
+soundfile==0.12.1
+pydub==0.25.1
+imageio-ffmpeg==0.5.1
+pydantic[email]==2.7.1
+pydantic-settings==2.2.1
+python-dotenv==1.0.1
