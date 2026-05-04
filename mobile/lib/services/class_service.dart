@@ -3,7 +3,7 @@ import 'package:http/http.dart' as http;
 import 'auth_service.dart';
 
 class ClassService {
-  static const String baseUrl = "https://VoiceAndroid-backend.onrender.com";
+  static const String baseUrl = "https://voiceandroid-ai.onrender.com";
 
   static Future<Map<String, String>> _headers() async {
     final token = await AuthService.getToken();

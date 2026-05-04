@@ -5,7 +5,8 @@ import 'package:http_parser/http_parser.dart';
 import 'auth_service.dart';
 
 class AttendanceService {
-  static const String baseUrl = "https://VoiceAndroid-backend.onrender.com";
+  static const String baseUrl =  "https://voiceandroid-ai.onrender.com";
+
 
   /// Increased to 45 s — the AI model on Render takes time to boot/process.
   static const Duration timeout = Duration(seconds: 45);

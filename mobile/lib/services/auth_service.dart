@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class AuthService {
-  static const String baseUrl = "https://VoiceAndroid-backend.onrender.com";
+  static const String baseUrl = "https://voiceandroid-ai.onrender.com";
   static const Duration _timeout = Duration(seconds: 15);
   static const int _maxRetries = 3;
 
@@ -39,6 +39,24 @@ class AuthService {
       try {
         return await http
             .post(uri, headers: headers, body: body)
+            .timeout(_timeout);
+      } catch (e) {
+        lastError = Exception(e.toString());
+        if (i < _maxRetries - 1) {
+          await Future.delayed(Duration(seconds: 2 * (i + 1)));
+        }
+      }
+    }
+    throw lastError ?? Exception('Request failed after $_maxRetries retries');
+  }
+
+  static Future<http.Response> _patchWithRetry(Uri uri,
+      {Map<String, String>? headers, Object? body}) async {
+    Exception? lastError;
+    for (int i = 0; i < _maxRetries; i++) {
+      try {
+        return await http
+            .patch(uri, headers: headers, body: body)
             .timeout(_timeout);
       } catch (e) {
         lastError = Exception(e.toString());
@@ -154,7 +172,6 @@ class AuthService {
     if (res.statusCode == 201 || res.statusCode == 200) {
       final data = _safeDecode(res);
 
-      // Plain string token
       if (data is String) {
         await saveToken(data);
         final user = _userFromToken(data, email);
@@ -162,7 +179,6 @@ class AuthService {
         return {'access_token': data, 'user': user};
       }
 
-      // Object response
       if (data is Map<String, dynamic>) {
         final token = data['access_token'] as String?;
         final user = data['user'] as Map<String, dynamic>? ??
@@ -200,7 +216,6 @@ class AuthService {
     if (res.statusCode == 200) {
       final data = _safeDecode(res);
 
-      // Plain string token
       if (data is String) {
         await saveToken(data);
         final user = _userFromToken(data, email);
@@ -208,7 +223,6 @@ class AuthService {
         return {'access_token': data, 'user': user};
       }
 
-      // Object response
       if (data is Map<String, dynamic>) {
         final token = data['access_token'] as String?;
         final user = data['user'] as Map<String, dynamic>? ??
@@ -246,7 +260,6 @@ class AuthService {
         if (streamed.statusCode == 200) {
           final data = jsonDecode(body);
 
-          // Plain string token
           if (data is String) {
             await saveToken(data);
             final user = _userFromToken(data, '');
@@ -254,7 +267,6 @@ class AuthService {
             return {'access_token': data, 'user': user};
           }
 
-          // Object response
           if (data is Map<String, dynamic>) {
             final token = data['access_token'] as String?;
             final user = data['user'] as Map<String, dynamic>? ??
@@ -393,5 +405,17 @@ class AuthService {
     }
     throw lastError ??
         Exception('Role update failed after $_maxRetries retries');
+  }
+
+  static Future<void> adminToggleActive(int userId) async {
+    final res = await _patchWithRetry(
+      Uri.parse('$baseUrl/admin/users/$userId/toggle-active'),
+      headers: await _authHeaders(),
+    );
+
+    if (res.statusCode != 200) {
+      final data = _safeDecode(res);
+      throw Exception(data['detail'] ?? 'Failed to toggle user status');
+    }
   }
 }

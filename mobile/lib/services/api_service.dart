@@ -17,7 +17,7 @@ import 'package:http/http.dart' as http;
 class ApiService {
   // ── Configuration ──────────────────────────────────────────────────────────
 
-  static const String baseUrl = "https://VoiceAndroid-backend.onrender.com";
+  static const String baseUrl = "https://voiceandroid-ai.onrender.com";
 
   /// Total time to wait for a single attempt before giving up.
   /// 60 s covers Render free-tier cold starts (~15–30 s) plus inference time.

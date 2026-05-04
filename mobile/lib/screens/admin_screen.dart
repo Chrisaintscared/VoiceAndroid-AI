@@ -18,7 +18,6 @@ class _AdminScreenState extends State<AdminScreen>
   bool _loadingLogs = true;
   String _searchQuery = '';
 
-  // ─── Design tokens ────────────────────────────────────────────────────
   static const _navy = Color(0xFF0D1B2A);
   static const _navyMid = Color(0xFF1A2E45);
   static const _navyLight = Color(0xFF243B55);
@@ -32,6 +31,7 @@ class _AdminScreenState extends State<AdminScreen>
   static const _success = Color(0xFF00E5A0);
   static const _danger = Color(0xFFFF5B7F);
   static const _purple = Color(0xFFB16CEA);
+  static const _warning = Color(0xFFFFB347);
 
   @override
   void initState() {
@@ -71,7 +71,110 @@ class _AdminScreenState extends State<AdminScreen>
     }
   }
 
-  // ── Logout Confirmation (Synced with Dashboard styles) ─────────────────────
+  Future<void> _toggleActive(Map<String, dynamic> user) async {
+    final userId = user['id'];
+    final currentlyActive = user['is_active'] ?? true;
+    final action = currentlyActive ? 'deactivate' : 'activate';
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: _surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: (currentlyActive ? _danger : _success).withOpacity(0.12),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                      color: (currentlyActive ? _danger : _success).withOpacity(0.3)),
+                ),
+                child: Icon(
+                  currentlyActive ? Icons.block_rounded : Icons.check_circle_rounded,
+                  color: currentlyActive ? _danger : _success,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                '${action[0].toUpperCase()}${action.substring(1)} user?',
+                style: const TextStyle(
+                    color: _textPrimary, fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                '${user['name']} will be ${currentlyActive ? 'deactivated and unable to log in' : 'reactivated and able to log in again'}.',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: _textSub, fontSize: 13),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => Navigator.pop(ctx, false),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        decoration: BoxDecoration(
+                          color: _navyMid,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: _navyLight),
+                        ),
+                        child: const Center(
+                            child: Text('Cancel',
+                                style: TextStyle(color: _textSub, fontSize: 14))),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => Navigator.pop(ctx, true),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        decoration: BoxDecoration(
+                          color: (currentlyActive ? _danger : _success).withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                              color: (currentlyActive ? _danger : _success).withOpacity(0.4)),
+                        ),
+                        child: Center(
+                          child: Text(
+                            action[0].toUpperCase() + action.substring(1),
+                            style: TextStyle(
+                                color: currentlyActive ? _danger : _success,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      await AuthService.adminToggleActive(userId);
+      await _loadUsers();
+      _showSnack(
+          '${user['name']} ${currentlyActive ? 'deactivated' : 'activated'} successfully');
+    } catch (e) {
+      _showSnack('Failed to update: $e', error: true);
+    }
+  }
+
   void _confirmLogout() {
     showDialog(
       context: context,
@@ -90,18 +193,14 @@ class _AdminScreenState extends State<AdminScreen>
                   shape: BoxShape.circle,
                   border: Border.all(color: _danger.withOpacity(0.3)),
                 ),
-                child:
-                    const Icon(Icons.logout_rounded, color: _danger, size: 22),
+                child: const Icon(Icons.logout_rounded, color: _danger, size: 22),
               ),
               const SizedBox(height: 16),
               const Text('Log out?',
                   style: TextStyle(
-                      color: _textPrimary,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold)),
+                      color: _textPrimary, fontSize: 16, fontWeight: FontWeight.bold)),
               const SizedBox(height: 6),
-              const Text(
-                  "You'll need to sign in again\nto access the admin panel.",
+              const Text("You'll need to sign in again\nto access the admin panel.",
                   textAlign: TextAlign.center,
                   style: TextStyle(color: _textSub, fontSize: 13)),
               const SizedBox(height: 24),
@@ -118,9 +217,8 @@ class _AdminScreenState extends State<AdminScreen>
                           border: Border.all(color: _navyLight),
                         ),
                         child: const Center(
-                          child: Text('Cancel',
-                              style: TextStyle(color: _textSub, fontSize: 14)),
-                        ),
+                            child: Text('Cancel',
+                                style: TextStyle(color: _textSub, fontSize: 14))),
                       ),
                     ),
                   ),
@@ -160,14 +258,12 @@ class _AdminScreenState extends State<AdminScreen>
   }
 
   void _showSnack(String msg, {bool error = false}) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Row(
         children: [
-          Icon(
-            error ? Icons.error_outline : Icons.check_circle_outline,
-            color: Colors.white,
-            size: 18,
-          ),
+          Icon(error ? Icons.error_outline : Icons.check_circle_outline,
+              color: Colors.white, size: 18),
           const SizedBox(width: 8),
           Flexible(child: Text(msg, style: const TextStyle(fontSize: 13))),
         ],
@@ -240,10 +336,9 @@ class _AdminScreenState extends State<AdminScreen>
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.3),
-              blurRadius: 16,
-              offset: const Offset(0, 4),
-            ),
+                color: Colors.black.withOpacity(0.3),
+                blurRadius: 16,
+                offset: const Offset(0, 4)),
           ],
         ),
         child: SafeArea(
@@ -259,8 +354,7 @@ class _AdminScreenState extends State<AdminScreen>
                       decoration: BoxDecoration(
                         color: _cyan.withOpacity(0.15),
                         borderRadius: BorderRadius.circular(12),
-                        border:
-                            Border.all(color: _cyan.withOpacity(0.3), width: 1),
+                        border: Border.all(color: _cyan.withOpacity(0.3)),
                       ),
                       child: const Icon(Icons.admin_panel_settings_rounded,
                           color: _cyan, size: 20),
@@ -290,8 +384,7 @@ class _AdminScreenState extends State<AdminScreen>
                         decoration: BoxDecoration(
                           color: _danger.withOpacity(0.12),
                           borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                              color: _danger.withOpacity(0.3), width: 1),
+                          border: Border.all(color: _danger.withOpacity(0.3)),
                         ),
                         child: const Icon(Icons.logout_rounded,
                             color: _danger, size: 18),
@@ -344,7 +437,6 @@ class _AdminScreenState extends State<AdminScreen>
 
   Widget _buildUsersTab() {
     if (_loadingUsers) return _buildLoader();
-
     if (_users.isEmpty) {
       return _buildEmpty(Icons.people_alt_rounded, 'No users found',
           'Users will appear here once registered');
@@ -353,6 +445,8 @@ class _AdminScreenState extends State<AdminScreen>
     final admins = _users.where((u) => u['role'] == 'admin').length;
     final teachers = _users.where((u) => u['role'] == 'teacher').length;
     final students = _users.where((u) => u['role'] == 'student').length;
+    final active = _users.where((u) => u['is_active'] == true).length;
+    final inactive = _users.length - active;
     final filtered = _filteredUsers;
 
     return RefreshIndicator(
@@ -367,6 +461,7 @@ class _AdminScreenState extends State<AdminScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Role stats
                   Row(
                     children: [
                       _StatCard(
@@ -388,17 +483,84 @@ class _AdminScreenState extends State<AdminScreen>
                           color: _success),
                     ],
                   ),
+                  const SizedBox(height: 8),
+                  // Active/Inactive stats
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              vertical: 10, horizontal: 12),
+                          decoration: BoxDecoration(
+                            color: _surface,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                                color: _success.withOpacity(0.3)),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 8,
+                                height: 8,
+                                decoration: const BoxDecoration(
+                                    color: _success,
+                                    shape: BoxShape.circle),
+                              ),
+                              const SizedBox(width: 8),
+                              Text('$active Active',
+                                  style: const TextStyle(
+                                      color: _success,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600)),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              vertical: 10, horizontal: 12),
+                          decoration: BoxDecoration(
+                            color: _surface,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                                color: _danger.withOpacity(0.3)),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 8,
+                                height: 8,
+                                decoration: const BoxDecoration(
+                                    color: _danger,
+                                    shape: BoxShape.circle),
+                              ),
+                              const SizedBox(width: 8),
+                              Text('$inactive Inactive',
+                                  style: const TextStyle(
+                                      color: _danger,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 14),
+                  // Search
                   Container(
                     height: 44,
                     decoration: BoxDecoration(
                       color: _surface,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: _navyLight, width: 1),
+                      border: Border.all(color: _navyLight),
                     ),
                     child: TextField(
                       onChanged: (v) => setState(() => _searchQuery = v),
-                      style: const TextStyle(color: _textPrimary, fontSize: 13),
+                      style:
+                          const TextStyle(color: _textPrimary, fontSize: 13),
                       decoration: InputDecoration(
                         hintText: 'Search users…',
                         hintStyle:
@@ -433,6 +595,7 @@ class _AdminScreenState extends State<AdminScreen>
                     user: u,
                     roleColor: _roleColor(u['role']),
                     roleIcon: _roleIcon(u['role']),
+                    onToggleActive: () => _toggleActive(u),
                   );
                 },
                 childCount: filtered.length,
@@ -471,13 +634,13 @@ class _AdminScreenState extends State<AdminScreen>
               child: Row(
                 children: [
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
                       color: _success.withOpacity(0.12),
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                          color: _success.withOpacity(0.3), width: 1),
+                      border:
+                          Border.all(color: _success.withOpacity(0.3)),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -485,13 +648,11 @@ class _AdminScreenState extends State<AdminScreen>
                         const Icon(Icons.check_circle_outline,
                             color: _success, size: 14),
                         const SizedBox(width: 6),
-                        Text(
-                          '${_attendance.length} total check-ins',
-                          style: const TextStyle(
-                              color: _success,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600),
-                        ),
+                        Text('${_attendance.length} total check-ins',
+                            style: const TextStyle(
+                                color: _success,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600)),
                       ],
                     ),
                   ),
@@ -505,26 +666,20 @@ class _AdminScreenState extends State<AdminScreen>
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
                 child: Row(
                   children: [
-                    Text(
-                      _formatDate(date),
-                      style: const TextStyle(
-                          color: _cyan,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 1.2),
-                    ),
+                    Text(_formatDate(date),
+                        style: const TextStyle(
+                            color: _cyan,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1.2)),
                     const SizedBox(width: 8),
-                    Expanded(
-                      child: Container(height: 1, color: _navyLight),
-                    ),
+                    Expanded(child: Container(height: 1, color: _navyLight)),
                     const SizedBox(width: 8),
-                    Text(
-                      '${grouped[date]!.length}',
-                      style: const TextStyle(
-                          color: _textMuted,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600),
-                    ),
+                    Text('${grouped[date]!.length}',
+                        style: const TextStyle(
+                            color: _textMuted,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600)),
                   ],
                 ),
               ),
@@ -533,10 +688,7 @@ class _AdminScreenState extends State<AdminScreen>
               padding: const EdgeInsets.symmetric(horizontal: 16),
               sliver: SliverList(
                 delegate: SliverChildBuilderDelegate(
-                  (_, i) {
-                    final log = grouped[date]![i];
-                    return _AttendanceCard(log: log);
-                  },
+                  (_, i) => _AttendanceCard(log: grouped[date]![i]),
                   childCount: grouped[date]!.length,
                 ),
               ),
@@ -552,19 +704,8 @@ class _AdminScreenState extends State<AdminScreen>
     try {
       final dt = DateTime.parse(iso);
       const months = [
-        '',
-        'JAN',
-        'FEB',
-        'MAR',
-        'APR',
-        'MAY',
-        'JUN',
-        'JUL',
-        'AUG',
-        'SEP',
-        'OCT',
-        'NOV',
-        'DEC'
+        '', 'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
+        'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'
       ];
       return '${months[dt.month]} ${dt.day}, ${dt.year}';
     } catch (_) {
@@ -578,10 +719,9 @@ class _AdminScreenState extends State<AdminScreen>
         mainAxisSize: MainAxisSize.min,
         children: [
           SizedBox(
-            width: 36,
-            height: 36,
-            child: CircularProgressIndicator(color: _cyan, strokeWidth: 2.5),
-          ),
+              width: 36,
+              height: 36,
+              child: CircularProgressIndicator(color: _cyan, strokeWidth: 2.5)),
           SizedBox(height: 12),
           Text('Loading…', style: TextStyle(color: _textMuted, fontSize: 13)),
         ],
@@ -600,8 +740,7 @@ class _AdminScreenState extends State<AdminScreen>
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
                 gradient: RadialGradient(
-                  colors: [_cyan.withOpacity(0.12), _cyan.withOpacity(0.0)],
-                ),
+                    colors: [_cyan.withOpacity(0.12), _cyan.withOpacity(0.0)]),
                 shape: BoxShape.circle,
               ),
               child: Container(
@@ -609,7 +748,7 @@ class _AdminScreenState extends State<AdminScreen>
                 decoration: BoxDecoration(
                   color: _surface,
                   shape: BoxShape.circle,
-                  border: Border.all(color: _cyan.withOpacity(0.3), width: 1),
+                  border: Border.all(color: _cyan.withOpacity(0.3)),
                 ),
                 child: Icon(icon, size: 32, color: _cyan),
               ),
@@ -632,35 +771,35 @@ class _AdminScreenState extends State<AdminScreen>
   }
 }
 
+// ── Stat Card ─────────────────────────────────────────────────────────────────
+
 class _StatCard extends StatelessWidget {
   final String label;
   final int value;
   final IconData icon;
   final Color color;
 
-  const _StatCard({
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.color,
-  });
+  const _StatCard(
+      {required this.label,
+      required this.value,
+      required this.icon,
+      required this.color});
 
   @override
   Widget build(BuildContext context) {
-    const _surface = Color(0xFF152032);
+    const surface = Color(0xFF152032);
     return Expanded(
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
         decoration: BoxDecoration(
-          color: _surface,
+          color: surface,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: color.withOpacity(0.25), width: 1),
+          border: Border.all(color: color.withOpacity(0.25)),
           boxShadow: [
             BoxShadow(
-              color: color.withOpacity(0.08),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
+                color: color.withOpacity(0.08),
+                blurRadius: 12,
+                offset: const Offset(0, 4))
           ],
         ),
         child: Column(
@@ -669,9 +808,8 @@ class _StatCard extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
-                color: color.withOpacity(0.15),
-                borderRadius: BorderRadius.circular(8),
-              ),
+                  color: color.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(8)),
               child: Icon(icon, color: color, size: 14),
             ),
             const SizedBox(height: 8),
@@ -695,21 +833,28 @@ class _StatCard extends StatelessWidget {
   }
 }
 
+// ── User Card ─────────────────────────────────────────────────────────────────
+
 class _UserCard extends StatelessWidget {
   final Map<String, dynamic> user;
   final Color roleColor;
   final IconData roleIcon;
+  final VoidCallback onToggleActive;
 
   static const _surface = Color(0xFF152032);
   static const _surfaceHigh = Color(0xFF1E3048);
   static const _navyLight = Color(0xFF243B55);
   static const _textPrimary = Color(0xFFF0F6FF);
   static const _textSub = Color(0xFF7EA8C4);
+  static const _textMuted = Color(0xFF4A7090);
+  static const _success = Color(0xFF00E5A0);
+  static const _danger = Color(0xFFFF5B7F);
 
   const _UserCard({
     required this.user,
     required this.roleColor,
     required this.roleIcon,
+    required this.onToggleActive,
   });
 
   @override
@@ -717,19 +862,23 @@ class _UserCard extends StatelessWidget {
     final name = user['name'] ?? '?';
     final email = user['email'] ?? '—';
     final role = user['role'] ?? 'student';
+    final isActive = user['is_active'] ?? true;
     final initial = name.isNotEmpty ? name[0].toUpperCase() : '?';
+    final statusColor = isActive ? _success : _danger;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: _surface,
+        color: isActive ? _surface : _surface.withOpacity(0.6),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _navyLight, width: 1),
+        border: Border.all(
+            color: isActive ? _navyLight : _danger.withOpacity(0.3)),
       ),
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Row(
           children: [
+            // Avatar with status dot
             Stack(
               children: [
                 Container(
@@ -738,26 +887,26 @@ class _UserCard extends StatelessWidget {
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: [
-                        roleColor.withOpacity(0.3),
-                        roleColor.withOpacity(0.1),
+                        roleColor.withOpacity(isActive ? 0.3 : 0.15),
+                        roleColor.withOpacity(isActive ? 0.1 : 0.05),
                       ],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
                     borderRadius: BorderRadius.circular(14),
-                    border:
-                        Border.all(color: roleColor.withOpacity(0.4), width: 1),
+                    border: Border.all(
+                        color: roleColor.withOpacity(isActive ? 0.4 : 0.2)),
                   ),
                   child: Center(
-                    child: Text(
-                      initial,
-                      style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: roleColor),
-                    ),
+                    child: Text(initial,
+                        style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: roleColor
+                                .withOpacity(isActive ? 1.0 : 0.4))),
                   ),
                 ),
+                // Role badge
                 Positioned(
                   right: 0,
                   bottom: 0,
@@ -767,50 +916,113 @@ class _UserCard extends StatelessWidget {
                       color: _surfaceHigh,
                       borderRadius: BorderRadius.circular(6),
                       border: Border.all(
-                          color: roleColor.withOpacity(0.5), width: 1),
+                          color: roleColor.withOpacity(0.5)),
                     ),
                     child: Icon(roleIcon, size: 9, color: roleColor),
+                  ),
+                ),
+                // Active status dot
+                Positioned(
+                  left: 0,
+                  top: 0,
+                  child: Container(
+                    width: 10,
+                    height: 10,
+                    decoration: BoxDecoration(
+                      color: statusColor,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: _surface, width: 1.5),
+                    ),
                   ),
                 ),
               ],
             ),
             const SizedBox(width: 12),
+            // Info
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(name,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 14,
-                          color: _textPrimary),
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 1),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(name,
+                            style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 14,
+                                color: isActive
+                                    ? _textPrimary
+                                    : _textMuted),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1),
+                      ),
+                      // Active/Inactive badge
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: statusColor.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                              color: statusColor.withOpacity(0.3)),
+                        ),
+                        child: Text(
+                          isActive ? 'ACTIVE' : 'INACTIVE',
+                          style: TextStyle(
+                              fontSize: 8,
+                              color: statusColor,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.6),
+                        ),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 2),
                   Text(email,
                       style: const TextStyle(color: _textSub, fontSize: 11),
                       overflow: TextOverflow.ellipsis,
                       maxLines: 1),
                   const SizedBox(height: 6),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: roleColor.withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                          color: roleColor.withOpacity(0.3), width: 1),
-                    ),
-                    child: Text(
-                      role.toUpperCase(),
-                      style: TextStyle(
-                          fontSize: 9,
-                          color: roleColor,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.8),
-                    ),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: roleColor.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                              color: roleColor.withOpacity(0.3)),
+                        ),
+                        child: Text(role.toUpperCase(),
+                            style: TextStyle(
+                                fontSize: 9,
+                                color: roleColor,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.8)),
+                      ),
+                    ],
                   ),
                 ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            // Toggle button
+            GestureDetector(
+              onTap: onToggleActive,
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: statusColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                  border:
+                      Border.all(color: statusColor.withOpacity(0.3)),
+                ),
+                child: Icon(
+                  isActive ? Icons.block_rounded : Icons.check_circle_outline,
+                  color: statusColor,
+                  size: 16,
+                ),
               ),
             ),
           ],
@@ -819,6 +1031,8 @@ class _UserCard extends StatelessWidget {
     );
   }
 }
+
+// ── Attendance Card ───────────────────────────────────────────────────────────
 
 class _AttendanceCard extends StatelessWidget {
   final Map<String, dynamic> log;
@@ -835,6 +1049,7 @@ class _AttendanceCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final name = log['user_name'] ?? log['name'] ?? 'Unknown';
+    final className = log['class_name'] ?? '';
     final initial = name.isNotEmpty ? name[0].toUpperCase() : '?';
     final confidence = (log['confidence'] as num?)?.toDouble() ?? 0.0;
     final confPct = (confidence * 100).toStringAsFixed(0);
@@ -843,9 +1058,7 @@ class _AttendanceCard extends StatelessWidget {
 
     String timeStr = '—';
     final ts = log['timestamp']?.toString() ?? '';
-    if (ts.length >= 19) {
-      timeStr = ts.substring(11, 19);
-    }
+    if (ts.length >= 19) timeStr = ts.substring(11, 19);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
@@ -853,7 +1066,7 @@ class _AttendanceCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: _surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _navyLight, width: 1),
+        border: Border.all(color: _navyLight),
       ),
       child: Row(
         children: [
@@ -863,7 +1076,7 @@ class _AttendanceCard extends StatelessWidget {
             decoration: BoxDecoration(
               color: _success.withOpacity(0.12),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: _success.withOpacity(0.3), width: 1),
+              border: Border.all(color: _success.withOpacity(0.3)),
             ),
             child: Center(
               child: Text(initial,
@@ -883,9 +1096,8 @@ class _AttendanceCard extends StatelessWidget {
                         fontWeight: FontWeight.w600,
                         fontSize: 13,
                         color: _textPrimary),
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1),
-                const SizedBox(height: 3),
+                    overflow: TextOverflow.ellipsis),
+                const SizedBox(height: 2),
                 Row(
                   children: [
                     const Icon(Icons.access_time_rounded,
@@ -893,6 +1105,18 @@ class _AttendanceCard extends StatelessWidget {
                     const SizedBox(width: 4),
                     Text(timeStr,
                         style: const TextStyle(color: _textSub, fontSize: 11)),
+                    if (className.isNotEmpty) ...[
+                      const SizedBox(width: 8),
+                      const Icon(Icons.class_outlined,
+                          size: 11, color: _textSub),
+                      const SizedBox(width: 4),
+                      Flexible(
+                        child: Text(className,
+                            style: const TextStyle(
+                                color: _textSub, fontSize: 11),
+                            overflow: TextOverflow.ellipsis),
+                      ),
+                    ],
                   ],
                 ),
               ],
@@ -902,12 +1126,12 @@ class _AttendanceCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
                   color: _success.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(8),
-                  border:
-                      Border.all(color: _success.withOpacity(0.3), width: 1),
+                  border: Border.all(color: _success.withOpacity(0.3)),
                 ),
                 child: const Text('PRESENT',
                     style: TextStyle(

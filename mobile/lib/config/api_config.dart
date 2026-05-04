@@ -1,4 +1,4 @@
 class ApiConfig {
   static const String baseUrl =
-      "https://VoiceAndroid-backend.onrender.com";
+      "https://voiceandroid-ai.onrender.com";
 }
