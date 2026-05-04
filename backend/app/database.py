@@ -25,7 +25,8 @@ def init_db():
                 name          TEXT NOT NULL,
                 email         TEXT UNIQUE NOT NULL,
                 password_hash TEXT NOT NULL,
-                role          TEXT DEFAULT 'student'
+                role          TEXT DEFAULT 'student',
+                is_active     BOOLEAN DEFAULT TRUE
             );
             CREATE TABLE IF NOT EXISTS classes (
                 id         SERIAL PRIMARY KEY,
@@ -98,7 +99,7 @@ def get_user_by_id(user_id: int):
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute(
-            "SELECT id, name, email, role FROM users WHERE id = %s", (user_id,)
+            "SELECT id, name, email, role, is_active FROM users WHERE id = %s", (user_id,)
         )
         return cur.fetchone()
     finally:
@@ -132,7 +133,9 @@ def list_all_users():
     conn = get_connection()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("SELECT id, name, email, role FROM users ORDER BY id DESC")
+        cur.execute(
+            "SELECT id, name, email, role, is_active FROM users ORDER BY id DESC"
+        )
         return cur.fetchall()
     finally:
         conn.close()
