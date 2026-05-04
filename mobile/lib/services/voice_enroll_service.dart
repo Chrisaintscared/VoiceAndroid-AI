@@ -8,7 +8,7 @@ import 'package:http_parser/http_parser.dart';
 import 'auth_service.dart';
 
 class VoiceEnrollService {
-  static const String _baseUrl = 'https://VoiceAndroid-backend.onrender.com';
+  static const String _baseUrl = 'https://voiceandroid-ai.onrender.com';
   static const Duration _timeout = Duration(seconds: 60);
   static const int _maxAttempts = 2;
   static const Duration _retryDelay = Duration(seconds: 3);
