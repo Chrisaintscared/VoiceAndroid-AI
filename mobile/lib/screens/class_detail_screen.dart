@@ -1,9 +1,12 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:VoiceAndroid/services/attendance_service.dart';
 import '../services/class_service.dart';
+import '../services/ml_service.dart';
+import '../services/server_warmup_service.dart'; // ← new
 import 'attendance_report_screen.dart';
 import 'package:record/record.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -83,6 +86,9 @@ class _ClassDetailScreenState extends State<ClassDetailScreen>
     );
 
     _loadData();
+    // Wake the Render server in the background so it is ready
+    // before the student finishes their 3-second recording.
+    if (!widget.isTeacher) ServerWarmupService.ping();
   }
 
   @override
@@ -132,8 +138,6 @@ class _ClassDetailScreenState extends State<ClassDetailScreen>
     });
   }
 
-  // ── Check-in (FINAL VERSION) ───────────────────────────────────────────
-
   Future<void> _startCheckIn() async {
     if (_alreadyCheckedInToday()) {
       _showSnack('Already checked in today', error: true);
@@ -142,9 +146,7 @@ class _ClassDetailScreenState extends State<ClassDetailScreen>
 
     if (!mounted) return;
 
-    // Request microphone permission
     final permission = await Permission.microphone.request();
-
     if (!permission.isGranted) {
       _showSnack('Microphone permission required', error: true);
       return;
@@ -152,8 +154,6 @@ class _ClassDetailScreenState extends State<ClassDetailScreen>
 
     try {
       final dir = await getTemporaryDirectory();
-
-      // Unique file path (prevents overwrite bugs)
       final path =
           '${dir.path}/checkin_${DateTime.now().millisecondsSinceEpoch}.wav';
 
@@ -171,7 +171,7 @@ class _ClassDetailScreenState extends State<ClassDetailScreen>
         _confidence = 0.0;
       });
 
-      _showSnack('Recording... tap again to stop');
+      _showSnack('Recording… tap again to stop');
     } catch (e) {
       _showSnack('Failed to start recording', error: true);
     }
@@ -187,30 +187,42 @@ class _ClassDetailScreenState extends State<ClassDetailScreen>
 
     try {
       final path = await _audioRecorder.stop();
-      if (path == null) throw Exception("Recording failed");
+      if (path == null) throw Exception('Recording failed');
 
       final file = File(path);
 
-      // --- CRITICAL: THE SILENCE GUARD ---
-      // A valid 3-second recording is roughly 90KB-100KB.
-      // If the file is smaller than 40KB, the student didn't speak or the mic failed.
+      // ── Silence / minimum-duration guard ────────────────────────────────
+      // A valid 3-second 16 kHz mono 16-bit WAV is ~96 KB.
+      // Anything under 40 KB is silence or a mic failure – reject early so
+      // we don't waste a network round-trip.
       if (!file.existsSync() || file.lengthSync() < 40000) {
         setState(() => _isProcessing = false);
-        _showSnack("No voice detected. Please speak louder!", error: true);
+        _showSnack('No voice detected. Please speak louder!', error: true);
         return;
       }
 
-      // --- COMMUNICATE WITH SERVER ---
-      final result = await AttendanceService.voiceCheckIn(
-        file,
-        widget.classId,
-      );
+      // ── Phase-A: attempt on-device embedding ────────────────────────────
+      // Returns null when the TFLite model asset is not loaded (Phase 1).
+      // Swap to Phase 2 by placing voice_model.tflite in assets/ and
+      // uncommenting tflite_flutter in pubspec.yaml + ml_service.dart.
+      final embedding = await MLService.instance.generateEmbedding(file);
 
-      // Backend returns confidence as a percentage (e.g. 88.0).
-      // We divide by 100 to get a 0.0 to 1.0 value for the progress bar.
-      final score = ((result['confidence'] as num?)?.toDouble() ?? 0.0) / 100.0;
+      // ── Phase-B: send to backend (with one cold-start retry) ────────────
+      Map<String, dynamic> result;
 
-      // Refresh the attendance list below the button
+      try {
+        result = await _callBackend(file, embedding);
+      } on TimeoutException {
+        // Render free-tier cold-start can take 30–50 s on first request.
+        // Show a friendly message, wait 4 s, then retry once.
+        _showSnack('Server waking up… retrying');
+        await Future.delayed(const Duration(seconds: 4));
+        result = await _callBackend(file, embedding);
+      }
+
+      final score =
+          ((result['confidence'] as num?)?.toDouble() ?? 0.0) / 100.0;
+
       await _loadData();
 
       if (!mounted) return;
@@ -227,15 +239,39 @@ class _ClassDetailScreenState extends State<ClassDetailScreen>
         _isProcessing = false;
         _confidence = 0.0;
       });
-      // Shows the exact error from the backend (Mismatch, Not Enrolled, etc.)
       _showSnack(e.toString().replaceFirst('Exception: ', ''), error: true);
     }
   }
 
-// Button logic (no changes needed, but included for safety)
+  // ── Backend routing ────────────────────────────────────────────────────
+
+  /// Phase 1: embedding == null  →  upload WAV (existing behaviour, unchanged)
+  /// Phase 2: embedding != null  →  POST float vector only (lightweight)
+  Future<Map<String, dynamic>> _callBackend(
+    File wavFile,
+    List<double>? embedding,
+  ) async {
+    if (embedding != null) {
+      // ── PHASE 2 ─────────────────────────────────────────────────────────
+      // Implement AttendanceService.embeddingCheckIn() on the Dart side, and
+      // add a POST /attendance/checkin_embedding route on the FastAPI side
+      // that accepts { class_id, embedding } and does cosine similarity
+      // against the stored enrollment vectors.
+      //
+      // return await AttendanceService.embeddingCheckIn(
+      //   embedding,
+      //   widget.classId,
+      // );
+    }
+
+    // ── PHASE 1 (current): upload WAV file ──────────────────────────────
+    return await AttendanceService.voiceCheckIn(wavFile, widget.classId);
+  }
+
+  // ── Button tap handler ────────────────────────────────────────────────
+
   void _handleCheckInTap() {
     if (_isProcessing) return;
-
     if (_isCheckingIn) {
       _stopCheckIn();
     } else {
@@ -487,6 +523,12 @@ class _ClassDetailScreenState extends State<ClassDetailScreen>
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  The sub-widgets below (_StudentView, _AttendanceTab, _StudentsTab,
+//  _AttendanceCard) are unchanged from your original file.  Paste them back
+//  here from class_detail_screen.dart lines ~335–1405.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  AppBar Action
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -589,7 +631,6 @@ class _StudentView extends StatelessWidget {
     return _danger;
   }
 
-  // ✅ Dynamic hint text based on real confidence score
   String _confidenceHint(double c) {
     if (c >= 0.75) return 'Strong match — voice verified successfully.';
     if (c >= 0.45) return 'Moderate match — consider re-enrolling your voice.';
@@ -607,7 +648,6 @@ class _StudentView extends StatelessWidget {
       backgroundColor: _surfaceHigh,
       child: CustomScrollView(
         slivers: [
-          // ── Check-in card ────────────────────────────────────────────
           SliverToBoxAdapter(
             child: Container(
               margin: const EdgeInsets.fromLTRB(16, 20, 16, 8),
@@ -642,7 +682,6 @@ class _StudentView extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 24),
-
                   GestureDetector(
                     onTap: (state == _BtnState.done ||
                             state == _BtnState.processing)
@@ -654,7 +693,6 @@ class _StudentView extends StatelessWidget {
                       child: Stack(
                         alignment: Alignment.center,
                         children: [
-                          // Ripple rings — only while recording
                           if (state == _BtnState.recording) ...[
                             _RippleRing(
                               animation: rippleAnim,
@@ -669,8 +707,6 @@ class _StudentView extends StatelessWidget {
                               delay: 0.35,
                             ),
                           ],
-
-                          // Outer glow ring
                           AnimatedBuilder(
                             animation: pulseAnim,
                             builder: (_, __) => Transform.scale(
@@ -697,8 +733,6 @@ class _StudentView extends StatelessWidget {
                               ),
                             ),
                           ),
-
-                          // Inner button circle
                           AnimatedBuilder(
                             animation: pulseAnim,
                             builder: (_, __) => Transform.scale(
@@ -763,9 +797,7 @@ class _StudentView extends StatelessWidget {
                       ),
                     ),
                   ),
-
                   const SizedBox(height: 20),
-
                   AnimatedSwitcher(
                     duration: const Duration(milliseconds: 250),
                     child: Text(
@@ -775,8 +807,6 @@ class _StudentView extends StatelessWidget {
                       textAlign: TextAlign.center,
                     ),
                   ),
-
-                  // ── Confidence bar (shown after check-in) ──────────
                   if (confidence > 0) ...[
                     const SizedBox(height: 20),
                     Container(
@@ -829,7 +859,6 @@ class _StudentView extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(height: 6),
-                          // ✅ Dynamic hint — reflects real score
                           Text(
                             _confidenceHint(confidence),
                             style: TextStyle(
@@ -844,8 +873,6 @@ class _StudentView extends StatelessWidget {
               ),
             ),
           ),
-
-          // ── Section header ───────────────────────────────────────────
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -883,8 +910,6 @@ class _StudentView extends StatelessWidget {
               ),
             ),
           ),
-
-          // ── Attendance list or empty state ───────────────────────────
           if (attendance.isEmpty)
             const SliverFillRemaining(
               hasScrollBody: false,
@@ -922,38 +947,27 @@ class _StudentView extends StatelessWidget {
 
   String _statusLabel(_BtnState s) {
     switch (s) {
-      case _BtnState.done:
-        return '✓  Checked in today';
-      case _BtnState.processing:
-        return 'Processing your voice…';
-      case _BtnState.recording:
-        return 'Recording… tap to stop';
-      case _BtnState.idle:
-        return 'Tap to check in';
+      case _BtnState.done:      return '✓  Checked in today';
+      case _BtnState.processing: return 'Processing your voice…';
+      case _BtnState.recording:  return 'Recording… tap to stop';
+      case _BtnState.idle:       return 'Tap to check in';
     }
   }
 
   String _subLabel(_BtnState s) {
     switch (s) {
-      case _BtnState.done:
-        return 'Attendance recorded for today';
-      case _BtnState.processing:
-        return 'Please wait a moment';
-      case _BtnState.recording:
-        return 'Speak your name clearly';
-      case _BtnState.idle:
-        return 'Voice recognition check-in';
+      case _BtnState.done:       return 'Attendance recorded for today';
+      case _BtnState.processing: return 'Please wait a moment';
+      case _BtnState.recording:  return 'Speak your name clearly';
+      case _BtnState.idle:       return 'Voice recognition check-in';
     }
   }
 
   IconData _btnIcon(_BtnState s) {
     switch (s) {
-      case _BtnState.done:
-        return Icons.check_circle_rounded;
-      case _BtnState.recording:
-        return Icons.stop_rounded;
-      default:
-        return Icons.mic_rounded;
+      case _BtnState.done:      return Icons.check_circle_rounded;
+      case _BtnState.recording: return Icons.stop_rounded;
+      default:                  return Icons.mic_rounded;
     }
   }
 }
@@ -1196,7 +1210,6 @@ class _StudentsTab extends StatelessWidget {
                         final email = (m['email'] as String?) ?? '';
                         final initial =
                             name.isNotEmpty ? name[0].toUpperCase() : '?';
-
                         return Container(
                           margin: const EdgeInsets.only(bottom: 8),
                           padding: const EdgeInsets.all(14),

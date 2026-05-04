@@ -31,6 +31,16 @@ dependencies:
   cupertino_icons: ^1.0.6
   http_parser: ^4.1.2
 
+  # ── On-device ML (Phase 2 – add when .tflite model is ready) ────────────
+  # Uncomment the block below ONLY after you have converted your Python model
+  # to a .tflite file and placed it in assets/voice_model.tflite.
+  #
+  # tflite_flutter: ^0.11.0
+  #
+  # NOTE: numerical_arrays does NOT exist on pub.dev.  tflite_flutter's own
+  # TensorBuffer / List<double> handling is all you need – no extra math
+  # package is required for 1-D float embeddings.
+
 # ===========================================================================
 # Dev Dependencies
 # ===========================================================================
@@ -58,3 +68,5 @@ flutter:
 
   assets:
     - assets/icon.png
+    # Uncomment when the TFLite model file is ready:
+    # - assets/voice_model.tflite
