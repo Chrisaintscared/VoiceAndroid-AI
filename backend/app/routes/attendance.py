@@ -23,7 +23,7 @@ router = APIRouter(tags=["attendance"])
 
 # ── Tuning constants ──────────────────────────────────────────────────────────
 SIMILARITY_THRESHOLD = 0.85
-MODAL_ENDPOINT_URL = "https://chrisaintscared--voice-verification-voiceverifier-extrac-e0e52a.modal.run"
+MODAL_ENDPOINT_URL = "https://chrisaintscared--voice-verification-voiceverifier-extrac-e0e52a.modal.run/"
 
 # ── Modal call ────────────────────────────────────────────────────────────────
 
