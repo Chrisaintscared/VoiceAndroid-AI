@@ -1,117 +1,66 @@
-import asyncio
-import ctypes
-import gc
-import io
+from __future__ import annotations
+
+import base64
 import logging
 import traceback
-from concurrent.futures import ThreadPoolExecutor
 
+import httpx
 import numpy as np
-import torch
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
-from app.database import get_voice_profile, save_voice_profile
+from app.database import save_voice_profile
 from app.security import get_current_user
 
-# ── Import the shared verifier so enrollment and check-in use
-#    the exact same model instance and silence threshold ──────────────────────
-from app.routes.attendance import _get_verifier, ENERGY_SILENCE_THRESH, TARGET_SR
-
 logger = logging.getLogger(__name__)
-router = APIRouter(tags=["enroll"])
+router = APIRouter(tags=["voice"])
 
-_executor = ThreadPoolExecutor(max_workers=1)
+MODAL_ENDPOINT_URL = "https://chrisaintscared--voice-verification-extract-embedding.modal.run"
 
+async def _get_embedding_from_modal(audio_bytes: bytes) -> np.ndarray:
+    audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
 
-def trim_memory():
-    try:
-        libc = ctypes.CDLL("libc.so.6")
-        libc.malloc_trim(0)
-    except Exception:
-        pass
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        try:
+            response = await client.post(
+                MODAL_ENDPOINT_URL,
+                json={"audio_b64": audio_b64},
+            )
+            response.raise_for_status()
+        except httpx.TimeoutException:
+            raise HTTPException(status_code=504, detail="Voice processing timed out. Please try again.")
+        except httpx.HTTPStatusError as e:
+            logger.error("Modal returned error: %s", e.response.text)
+            raise HTTPException(status_code=502, detail="Voice service error.")
 
+    data = response.json()
 
-def _extract_and_normalise(audio_bytes: bytes, verifier) -> list:
-    from pydub import AudioSegment
-    import shutil
+    if "error" in data:
+        raise HTTPException(status_code=400, detail=data["error"])
 
-    ffmpeg_path = shutil.which("ffmpeg")
-    if ffmpeg_path:
-        AudioSegment.converter = ffmpeg_path
-    else:
-        import imageio_ffmpeg
-        AudioSegment.converter = imageio_ffmpeg.get_ffmpeg_exe()
-
-    seg = AudioSegment.from_file(io.BytesIO(audio_bytes))
-    seg = seg.set_channels(1).set_frame_rate(TARGET_SR).set_sample_width(2)
-    samples = (
-        np.frombuffer(seg.raw_data, dtype=np.int16).astype(np.float32) / 32768.0
-    )
-
-    rms = float(np.sqrt(np.mean(samples ** 2)))
-    if rms < ENERGY_SILENCE_THRESH:
-        raise ValueError("Audio too quiet. Please speak more clearly.")
-
-    wav_tensor = torch.tensor(samples).unsqueeze(0)
-    with torch.no_grad():
-        embedding = verifier.encode_batch(wav_tensor, torch.tensor([1.0]))
-
-    emb_np = embedding.squeeze().cpu().numpy()
-    norm = np.linalg.norm(emb_np)
-    if norm == 0:
-        raise ValueError("Could not extract a valid voice embedding.")
-    return (emb_np / norm).tolist()
+    return np.array(data["embedding"])
 
 
 @router.post("/enroll-voice")
 async def enroll_voice(
-    voice: UploadFile = File(...),
+    audio: UploadFile = File(...),
     user=Depends(get_current_user),
 ):
-    if user["role"] != "student":
-        raise HTTPException(
-            status_code=403, detail="Only students can enroll a voice profile"
+    try:
+        audio_bytes = await audio.read()
+        logger.info("Enrollment audio received: %d bytes for user_id=%s", len(audio_bytes), user["id"])
+
+        embedding = await _get_embedding_from_modal(audio_bytes)
+
+        save_voice_profile(
+            user_id=user["id"],
+            embedding=embedding.tolist(),
         )
 
-    if get_voice_profile(user["id"]):
-        raise HTTPException(status_code=409, detail="Voice profile already exists")
-
-    try:
-        gc.collect()
-        trim_memory()
-
-        # Use the shared singleton — same model instance as attendance check-in
-        verifier = await _get_verifier()
-
-        audio_bytes = await voice.read()
-        loop = asyncio.get_event_loop()
-
-        try:
-            embedding = await asyncio.wait_for(
-                loop.run_in_executor(
-                    _executor, _extract_and_normalise, audio_bytes, verifier
-                ),
-                timeout=45.0,
-            )
-        except ValueError as ve:
-            raise HTTPException(status_code=400, detail=str(ve))
-        except asyncio.TimeoutError:
-            raise HTTPException(
-                status_code=504, detail="Voice processing timed out. Try again."
-            )
-
-        save_voice_profile(user["id"], embedding)
-        return {"message": "Voice profile enrolled successfully"}
+        logger.info("Voice enrolled successfully for user_id=%s", user["id"])
+        return {"status": "enrolled"}
 
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error("FULL TRACEBACK:\n%s", traceback.format_exc())
-        raise HTTPException(
-            status_code=500,
-            detail=f"Enrollment failed: {type(e).__name__}: {str(e)}",
-        )
-    finally:
-        # Do NOT delete verifier here — it's the shared singleton now
-        gc.collect()
-        trim_memory()
+    except Exception:
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail="Enrollment failed.")
