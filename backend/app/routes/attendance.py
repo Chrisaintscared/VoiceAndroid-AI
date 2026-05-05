@@ -79,10 +79,12 @@ def _extract_embedding(audio_bytes: bytes, verifier) -> np.ndarray:
     )
 
     rms_energy = float(np.sqrt(np.mean(samples ** 2)))
+    logger.info("Audio RMS energy: %.6f (silence threshold: %.3f)",
+                rms_energy, ENERGY_SILENCE_THRESH)
+
     if rms_energy < ENERGY_SILENCE_THRESH:
         raise ValueError("Audio is too quiet. Please speak more clearly.")
 
-    # Use no_grad + explicit tensor cleanup
     tensor_input = torch.tensor(samples).unsqueeze(0)
     tensor_len = torch.tensor([1.0])
     try:
@@ -90,7 +92,6 @@ def _extract_embedding(audio_bytes: bytes, verifier) -> np.ndarray:
             embedding = verifier.encode_batch(tensor_input, tensor_len)
         emb_np = embedding.squeeze().cpu().numpy().copy()
     finally:
-        # Explicitly delete tensors to free memory immediately
         del tensor_input, tensor_len, embedding
         gc.collect()
         _trim_memory()
@@ -133,6 +134,9 @@ async def mark_attendance(
         verifier = await _get_verifier()
         audio_bytes = await audio.read()
 
+        logger.info("Audio received: %d bytes for user_id=%s",
+                    len(audio_bytes), user["id"])
+
         loop = asyncio.get_event_loop()
         try:
             live_emb = await asyncio.wait_for(
@@ -149,13 +153,32 @@ async def mark_attendance(
             )
 
         stored_emb = np.array(stored["embedding"])
+
+        logger.info("Live embedding norm:   %.6f", float(np.linalg.norm(live_emb)))
+        logger.info("Stored embedding norm: %.6f", float(np.linalg.norm(stored_emb)))
+
         similarity = float(np.dot(live_emb, stored_emb))
 
+        # ── KEY DEBUG LINE ────────────────────────────────────────────────────
+        logger.info(
+            "Voice similarity score: %.4f (threshold: %.2f) user_id=%s",
+            similarity, SIMILARITY_THRESHOLD, user["id"],
+        )
+
         if similarity < SIMILARITY_THRESHOLD:
+            logger.info(
+                "REJECTED: score %.4f below threshold %.2f for user_id=%s",
+                similarity, SIMILARITY_THRESHOLD, user["id"],
+            )
             raise HTTPException(
                 status_code=401,
                 detail=f"Voice not recognised (score: {similarity:.2f}). Try again.",
             )
+
+        logger.info(
+            "ACCEPTED: score %.4f for user_id=%s class_id=%s",
+            similarity, user["id"], class_id,
+        )
 
         save_attendance(
             user_id=user["id"],
