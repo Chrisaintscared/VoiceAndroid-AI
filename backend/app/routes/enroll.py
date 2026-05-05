@@ -42,11 +42,11 @@ async def _get_embedding_from_modal(audio_bytes: bytes) -> np.ndarray:
 
 @router.post("/enroll-voice")
 async def enroll_voice(
-    audio: UploadFile = File(...),
+    voice: UploadFile = File(...),
     user=Depends(get_current_user),
 ):
     try:
-        audio_bytes = await audio.read()
+        audio_bytes = await voice.read()
         logger.info("Enrollment audio received: %d bytes for user_id=%s", len(audio_bytes), user["id"])
 
         embedding = await _get_embedding_from_modal(audio_bytes)
