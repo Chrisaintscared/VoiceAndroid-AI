@@ -4,7 +4,37 @@
 library;
 
 import 'package:flutter/material.dart';
-import '../services/attendance_service.dart';
+
+// ── Data model ────────────────────────────────────────────────────────────────
+// Defined here because AttendanceService only handles HTTP calls —
+// it does not define result models.
+
+class AttendanceResult {
+  final String userName;
+  final double confidence; // 0.0 – 1.0
+  final Map<String, dynamic> log;
+
+  const AttendanceResult({
+    required this.userName,
+    required this.confidence,
+    required this.log,
+  });
+
+  /// Construct from the raw map returned by AttendanceService.voiceCheckIn().
+  ///
+  /// Backend returns:
+  ///   { "status": "success", "confidence": 88.5, ... }
+  /// confidence is a percentage (0–100), converted to 0.0–1.0 here.
+  factory AttendanceResult.fromMap(Map<String, dynamic> map) {
+    return AttendanceResult(
+      userName: (map['user_name'] as String?) ?? 'Unknown',
+      confidence: ((map['confidence'] as num?)?.toDouble() ?? 0.0) / 100.0,
+      log: map,
+    );
+  }
+}
+
+// ── Widget ────────────────────────────────────────────────────────────────────
 
 class ResultCard extends StatelessWidget {
   final AttendanceResult result;
@@ -14,7 +44,7 @@ class ResultCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final confidencePct = (result.confidence * 100).toStringAsFixed(1);
-    final logId         = result.log['id']?.toString() ?? '–';
+    final logId = result.log['id']?.toString() ?? '–';
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -25,7 +55,7 @@ class ResultCard extends StatelessWidget {
             const Color(0xFF0077B6).withOpacity(0.12),
           ],
           begin: Alignment.topLeft,
-          end:   Alignment.bottomRight,
+          end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
@@ -36,18 +66,17 @@ class ResultCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Header ──────────────────────────────────────────────────────
+          // ── Header ────────────────────────────────────────────────────────
           const Row(
             children: [
-              Icon(Icons.person_pin_circle,
-                  color: Color(0xFF00C9A7), size: 26),
+              Icon(Icons.person_pin_circle, color: Color(0xFF00C9A7), size: 26),
               SizedBox(width: 10),
               Text(
                 'Speaker Recognised',
                 style: TextStyle(
-                  color:      Color(0xFF00C9A7),
+                  color: Color(0xFF00C9A7),
                   fontWeight: FontWeight.w700,
-                  fontSize:   14,
+                  fontSize: 14,
                   letterSpacing: 0.5,
                 ),
               ),
@@ -55,18 +84,18 @@ class ResultCard extends StatelessWidget {
           ),
           const SizedBox(height: 16),
 
-          // ── User Name ────────────────────────────────────────────────────
+          // ── User Name ──────────────────────────────────────────────────────
           Text(
             result.userName,
             style: const TextStyle(
-              color:      Colors.white,
+              color: Colors.white,
               fontWeight: FontWeight.w800,
-              fontSize:   28,
+              fontSize: 28,
             ),
           ),
           const SizedBox(height: 14),
 
-          // ── Confidence Bar ───────────────────────────────────────────────
+          // ── Confidence Bar ─────────────────────────────────────────────────
           _InfoRow(
             label: 'Confidence',
             value: '$confidencePct%',
@@ -82,11 +111,11 @@ class ResultCard extends StatelessWidget {
           ),
           const SizedBox(height: 10),
 
-          // ── Log ID ───────────────────────────────────────────────────────
+          // ── Log ID ─────────────────────────────────────────────────────────
           _InfoRow(label: 'Log ID', value: '#$logId'),
           const SizedBox(height: 10),
 
-          // ── Timestamp ────────────────────────────────────────────────────
+          // ── Timestamp ──────────────────────────────────────────────────────
           _InfoRow(
             label: 'Recorded at',
             value: _formatTimestamp(result.log['timestamp']?.toString()),
@@ -107,7 +136,7 @@ class ResultCard extends StatelessWidget {
     try {
       final dt = DateTime.parse(raw).toLocal();
       return '${dt.year}-${_p(dt.month)}-${_p(dt.day)} '
-             '${_p(dt.hour)}:${_p(dt.minute)}:${_p(dt.second)}';
+          '${_p(dt.hour)}:${_p(dt.minute)}:${_p(dt.second)}';
     } catch (_) {
       return raw;
     }
@@ -116,9 +145,7 @@ class ResultCard extends StatelessWidget {
   String _p(int v) => v.toString().padLeft(2, '0');
 }
 
-// ---------------------------------------------------------------------------
-// Sub-widget – a labelled info row
-// ---------------------------------------------------------------------------
+// ── Sub-widget ────────────────────────────────────────────────────────────────
 
 class _InfoRow extends StatelessWidget {
   final String label;
@@ -139,7 +166,7 @@ class _InfoRow extends StatelessWidget {
         Text(
           label.toUpperCase(),
           style: TextStyle(
-            color:    Colors.white.withOpacity(0.40),
+            color: Colors.white.withOpacity(0.40),
             fontSize: 10,
             letterSpacing: 1.2,
             fontWeight: FontWeight.w600,
@@ -151,8 +178,8 @@ class _InfoRow extends StatelessWidget {
             Text(
               value,
               style: const TextStyle(
-                color:      Colors.white,
-                fontSize:   15,
+                color: Colors.white,
+                fontSize: 15,
                 fontWeight: FontWeight.w600,
               ),
             ),

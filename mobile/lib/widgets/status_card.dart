@@ -4,7 +4,7 @@
 library;
 
 import 'package:flutter/material.dart';
-import '../screens/home_screen.dart';
+import '../attendance_state.dart'; // ← correct location
 
 class StatusCard extends StatelessWidget {
   final AttendanceState state;
@@ -20,9 +20,9 @@ class StatusCard extends StatelessWidget {
       curve: Curves.easeInOut,
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       decoration: BoxDecoration(
-        color:        config.bgColor,
+        color: config.bgColor,
         borderRadius: BorderRadius.circular(16),
-        border:       Border.all(color: config.borderColor, width: 1.2),
+        border: Border.all(color: config.borderColor, width: 1.2),
       ),
       child: Row(
         children: [
@@ -35,16 +35,16 @@ class StatusCard extends StatelessWidget {
                 Text(
                   config.title,
                   style: TextStyle(
-                    color:      config.iconColor,
+                    color: config.iconColor,
                     fontWeight: FontWeight.w700,
-                    fontSize:   15,
+                    fontSize: 15,
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   config.subtitle,
                   style: TextStyle(
-                    color:    config.iconColor.withOpacity(0.75),
+                    color: config.iconColor.withOpacity(0.75),
                     fontSize: 12,
                   ),
                 ),
@@ -59,52 +59,50 @@ class StatusCard extends StatelessWidget {
   _StatusConfig _configFor(AttendanceState state) {
     return switch (state) {
       AttendanceState.idle => _StatusConfig(
-        title:       'Ready',
-        subtitle:    'Press the microphone button to begin.',
-        icon:        Icons.sensors,
-        iconColor:   const Color(0xFF00C9A7),
-        bgColor:     const Color(0xFF00C9A7).withOpacity(0.08),
-        borderColor: const Color(0xFF00C9A7).withOpacity(0.25),
-      ),
+          title: 'Ready',
+          subtitle: 'Press the microphone button to begin.',
+          icon: Icons.sensors,
+          iconColor: const Color(0xFF00C9A7),
+          bgColor: const Color(0xFF00C9A7).withOpacity(0.08),
+          borderColor: const Color(0xFF00C9A7).withOpacity(0.25),
+        ),
       AttendanceState.recording => _StatusConfig(
-        title:       'Recording…',
-        subtitle:    'Speak clearly. Press stop when finished.',
-        icon:        Icons.fiber_manual_record,
-        iconColor:   Colors.redAccent,
-        bgColor:     Colors.redAccent.withOpacity(0.08),
-        borderColor: Colors.redAccent.withOpacity(0.3),
-      ),
+          title: 'Recording…',
+          subtitle: 'Speak clearly. Press stop when finished.',
+          icon: Icons.fiber_manual_record,
+          iconColor: Colors.redAccent,
+          bgColor: Colors.redAccent.withOpacity(0.08),
+          borderColor: Colors.redAccent.withOpacity(0.3),
+        ),
       AttendanceState.processing => _StatusConfig(
-        title:       'Analysing Voice',
-        subtitle:    'Sending audio to AI for recognition…',
-        icon:        Icons.auto_awesome,
-        iconColor:   Colors.amberAccent,
-        bgColor:     Colors.amberAccent.withOpacity(0.08),
-        borderColor: Colors.amberAccent.withOpacity(0.3),
-      ),
+          title: 'Analysing Voice',
+          subtitle: 'Sending audio to AI for recognition…',
+          icon: Icons.auto_awesome,
+          iconColor: Colors.amberAccent,
+          bgColor: Colors.amberAccent.withOpacity(0.08),
+          borderColor: Colors.amberAccent.withOpacity(0.3),
+        ),
       AttendanceState.success => _StatusConfig(
-        title:       'Attendance Marked ✓',
-        subtitle:    'Recognition successful.',
-        icon:        Icons.check_circle_outline,
-        iconColor:   const Color(0xFF00C9A7),
-        bgColor:     const Color(0xFF00C9A7).withOpacity(0.10),
-        borderColor: const Color(0xFF00C9A7).withOpacity(0.4),
-      ),
+          title: 'Attendance Marked ✓',
+          subtitle: 'Recognition successful.',
+          icon: Icons.check_circle_outline,
+          iconColor: const Color(0xFF00C9A7),
+          bgColor: const Color(0xFF00C9A7).withOpacity(0.10),
+          borderColor: const Color(0xFF00C9A7).withOpacity(0.4),
+        ),
       AttendanceState.error => _StatusConfig(
-        title:       'Error',
-        subtitle:    'Something went wrong. See details below.',
-        icon:        Icons.warning_amber_rounded,
-        iconColor:   Colors.redAccent,
-        bgColor:     Colors.redAccent.withOpacity(0.08),
-        borderColor: Colors.redAccent.withOpacity(0.3),
-      ),
+          title: 'Error',
+          subtitle: 'Something went wrong. See details below.',
+          icon: Icons.warning_amber_rounded,
+          iconColor: Colors.redAccent,
+          bgColor: Colors.redAccent.withOpacity(0.08),
+          borderColor: Colors.redAccent.withOpacity(0.3),
+        ),
     };
   }
 }
 
-// ---------------------------------------------------------------------------
-// Internal config model
-// ---------------------------------------------------------------------------
+// ── Internal config model ─────────────────────────────────────────────────────
 
 class _StatusConfig {
   final String title;
