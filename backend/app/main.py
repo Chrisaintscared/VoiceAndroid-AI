@@ -3,12 +3,10 @@ import asyncio
 import logging
 import traceback
 from contextlib import asynccontextmanager
-import torch
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-torch.set_grad_enabled(False)
-torch.set_num_threads(1)
 
 logging.basicConfig(
     level=logging.INFO,
