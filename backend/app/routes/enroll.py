@@ -14,7 +14,7 @@ from app.security import get_current_user
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["voice"])
 
-MODAL_ENDPOINT_URL = "https://chrisaintscared--voice-verification-extract-embedding.modal.run"
+MODAL_ENDPOINT_URL = "https://chrisaintscared--voice-verification-voiceverifier-extrac-e0e52a.modal.run"
 
 async def _get_embedding_from_modal(audio_bytes: bytes) -> np.ndarray:
     audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
