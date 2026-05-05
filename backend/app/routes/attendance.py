@@ -31,7 +31,7 @@ async def _get_embedding_from_modal(audio_bytes: bytes) -> np.ndarray:
     """Send audio to Modal, get back a normalised ECAPA embedding."""
     audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
 
-    async with httpx.AsyncClient(timeout=180.0) as client:
+    async with httpx.AsyncClient(timeout=180.0, follow_redirects=True) as client:
         try:
             response = await client.post(
                 MODAL_ENDPOINT_URL,
