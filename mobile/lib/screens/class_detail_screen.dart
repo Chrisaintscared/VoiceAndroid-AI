@@ -2,14 +2,12 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:VoiceAndroid/services/attendance_service.dart';
+import '../services/audio_recorder_service.dart'; // uses same config as enrollment
 import '../services/class_service.dart';
 import '../services/ml_service.dart';
-import '../services/server_warmup_service.dart'; // ← new
+import '../services/server_warmup_service.dart';
 import 'attendance_report_screen.dart';
-import 'package:record/record.dart';
-import 'package:permission_handler/permission_handler.dart';
 
 class ClassDetailScreen extends StatefulWidget {
   final int classId;
@@ -46,8 +44,8 @@ class _ClassDetailScreenState extends State<ClassDetailScreen>
   late AnimationController _rippleController;
   late Animation<double> _rippleAnim;
 
-  final AudioRecorder _audioRecorder = AudioRecorder();
-  String? _recordedPath;
+  final _recorder =
+      AudioRecorderService(); // same config as voice_enroll_screen
 
   // ── Design tokens ──────────────────────────────────────────────────────
   static const _navy = Color(0xFF0D1B2A);
@@ -96,6 +94,7 @@ class _ClassDetailScreenState extends State<ClassDetailScreen>
     _tabController.dispose();
     _pulseController.dispose();
     _rippleController.dispose();
+    _recorder.dispose();
     super.dispose();
   }
 
@@ -146,35 +145,21 @@ class _ClassDetailScreenState extends State<ClassDetailScreen>
 
     if (!mounted) return;
 
-    final permission = await Permission.microphone.request();
-    if (!permission.isGranted) {
-      _showSnack('Microphone permission required', error: true);
+    // AudioRecorderService.startRecording() handles permission internally
+    final started = await _recorder.startRecording();
+    if (!started) {
+      _showSnack('Microphone permission required or recording failed.',
+          error: true);
       return;
     }
 
-    try {
-      final dir = await getTemporaryDirectory();
-      final path =
-          '${dir.path}/checkin_${DateTime.now().millisecondsSinceEpoch}.wav';
+    setState(() {
+      _isCheckingIn = true;
+      _isProcessing = false;
+      _confidence = 0.0;
+    });
 
-      await _audioRecorder.start(
-        const RecordConfig(
-          encoder: AudioEncoder.wav,
-          sampleRate: 16000,
-        ),
-        path: path,
-      );
-
-      setState(() {
-        _isCheckingIn = true;
-        _isProcessing = false;
-        _confidence = 0.0;
-      });
-
-      _showSnack('Recording… tap again to stop');
-    } catch (e) {
-      _showSnack('Failed to start recording', error: true);
-    }
+    _showSnack('Recording… tap again to stop');
   }
 
   Future<void> _stopCheckIn() async {
@@ -186,18 +171,14 @@ class _ClassDetailScreenState extends State<ClassDetailScreen>
     });
 
     try {
-      final path = await _audioRecorder.stop();
-      if (path == null) throw Exception('Recording failed');
+      // stopRecording() enforces the 2-second minimum and 1KB size guard
+      // with the same audio config (autoGain, echoCancel, noiseSuppress)
+      // that voice_enroll_screen uses — consistent audio = better matching.
+      final file = await _recorder.stopRecording();
 
-      final file = File(path);
-
-      // ── Silence / minimum-duration guard ────────────────────────────────
-      // A valid 3-second 16 kHz mono 16-bit WAV is ~96 KB.
-      // Anything under 40 KB is silence or a mic failure – reject early so
-      // we don't waste a network round-trip.
-      if (!file.existsSync() || file.lengthSync() < 40000) {
+      if (file == null) {
         setState(() => _isProcessing = false);
-        _showSnack('No voice detected. Please speak louder!', error: true);
+        _showSnack('Recording too short or no voice detected.', error: true);
         return;
       }
 
@@ -220,8 +201,7 @@ class _ClassDetailScreenState extends State<ClassDetailScreen>
         result = await _callBackend(file, embedding);
       }
 
-      final score =
-          ((result['confidence'] as num?)?.toDouble() ?? 0.0) / 100.0;
+      final score = ((result['confidence'] as num?)?.toDouble() ?? 0.0) / 100.0;
 
       await _loadData();
 
@@ -947,27 +927,38 @@ class _StudentView extends StatelessWidget {
 
   String _statusLabel(_BtnState s) {
     switch (s) {
-      case _BtnState.done:      return '✓  Checked in today';
-      case _BtnState.processing: return 'Processing your voice…';
-      case _BtnState.recording:  return 'Recording… tap to stop';
-      case _BtnState.idle:       return 'Tap to check in';
+      case _BtnState.done:
+        return '✓  Checked in today';
+      case _BtnState.processing:
+        return 'Processing your voice…';
+      case _BtnState.recording:
+        return 'Recording… tap to stop';
+      case _BtnState.idle:
+        return 'Tap to check in';
     }
   }
 
   String _subLabel(_BtnState s) {
     switch (s) {
-      case _BtnState.done:       return 'Attendance recorded for today';
-      case _BtnState.processing: return 'Please wait a moment';
-      case _BtnState.recording:  return 'Speak your name clearly';
-      case _BtnState.idle:       return 'Voice recognition check-in';
+      case _BtnState.done:
+        return 'Attendance recorded for today';
+      case _BtnState.processing:
+        return 'Please wait a moment';
+      case _BtnState.recording:
+        return 'Speak your name clearly';
+      case _BtnState.idle:
+        return 'Voice recognition check-in';
     }
   }
 
   IconData _btnIcon(_BtnState s) {
     switch (s) {
-      case _BtnState.done:      return Icons.check_circle_rounded;
-      case _BtnState.recording: return Icons.stop_rounded;
-      default:                  return Icons.mic_rounded;
+      case _BtnState.done:
+        return Icons.check_circle_rounded;
+      case _BtnState.recording:
+        return Icons.stop_rounded;
+      default:
+        return Icons.mic_rounded;
     }
   }
 }
