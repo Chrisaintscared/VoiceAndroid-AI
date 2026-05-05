@@ -13,13 +13,14 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from app.database import get_voice_profile, save_voice_profile
 from app.security import get_current_user
 
+# ── Import the shared verifier so enrollment and check-in use
+#    the exact same model instance and silence threshold ──────────────────────
+from app.routes.attendance import _get_verifier, ENERGY_SILENCE_THRESH, TARGET_SR
+
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["enroll"])
 
 _executor = ThreadPoolExecutor(max_workers=1)
-
-TARGET_SR = 16_000
-ENERGY_SILENCE_THRESH = 0.005
 
 
 def trim_memory():
@@ -43,7 +44,9 @@ def _extract_and_normalise(audio_bytes: bytes, verifier) -> list:
 
     seg = AudioSegment.from_file(io.BytesIO(audio_bytes))
     seg = seg.set_channels(1).set_frame_rate(TARGET_SR).set_sample_width(2)
-    samples = np.frombuffer(seg.raw_data, dtype=np.int16).astype(np.float32) / 32768.0
+    samples = (
+        np.frombuffer(seg.raw_data, dtype=np.int16).astype(np.float32) / 32768.0
+    )
 
     rms = float(np.sqrt(np.mean(samples ** 2)))
     if rms < ENERGY_SILENCE_THRESH:
@@ -66,36 +69,36 @@ async def enroll_voice(
     user=Depends(get_current_user),
 ):
     if user["role"] != "student":
-        raise HTTPException(status_code=403, detail="Only students can enroll a voice profile")
+        raise HTTPException(
+            status_code=403, detail="Only students can enroll a voice profile"
+        )
 
     if get_voice_profile(user["id"]):
         raise HTTPException(status_code=409, detail="Voice profile already exists")
 
-    verifier = None
     try:
         gc.collect()
         trim_memory()
 
-        from speechbrain.inference.speaker import SpeakerRecognition
-
-        verifier = SpeakerRecognition.from_hparams(
-            source="speechbrain/spkrec-xvect-voxceleb",
-            savedir="pretrained_models/spkrec-xvect",
-            run_opts={"device": "cpu"},
-        )
+        # Use the shared singleton — same model instance as attendance check-in
+        verifier = await _get_verifier()
 
         audio_bytes = await voice.read()
         loop = asyncio.get_event_loop()
 
         try:
             embedding = await asyncio.wait_for(
-                loop.run_in_executor(_executor, _extract_and_normalise, audio_bytes, verifier),
+                loop.run_in_executor(
+                    _executor, _extract_and_normalise, audio_bytes, verifier
+                ),
                 timeout=45.0,
             )
         except ValueError as ve:
             raise HTTPException(status_code=400, detail=str(ve))
         except asyncio.TimeoutError:
-            raise HTTPException(status_code=504, detail="Voice processing timed out. Try again.")
+            raise HTTPException(
+                status_code=504, detail="Voice processing timed out. Try again."
+            )
 
         save_voice_profile(user["id"], embedding)
         return {"message": "Voice profile enrolled successfully"}
@@ -104,9 +107,11 @@ async def enroll_voice(
         raise
     except Exception as e:
         logger.error("FULL TRACEBACK:\n%s", traceback.format_exc())
-        raise HTTPException(status_code=500, detail=f"Enrollment failed: {type(e).__name__}: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Enrollment failed: {type(e).__name__}: {str(e)}",
+        )
     finally:
-        if verifier is not None:
-            del verifier
+        # Do NOT delete verifier here — it's the shared singleton now
         gc.collect()
         trim_memory()
