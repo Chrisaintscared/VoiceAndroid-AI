@@ -9,7 +9,7 @@ class AttendanceService {
 
 
   /// Increased to 45 s — the AI model on Render takes time to boot/process.
-  static const Duration timeout = Duration(seconds: 45);
+  static const Duration timeout = Duration(seconds: 180);
 
   // ── Voice check-in ──────────────────────────────────────────────────────────
 

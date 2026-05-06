@@ -9,7 +9,7 @@ class ApiService {
 
   static const String baseUrl = "https://voiceandroid-ai.onrender.com";
 
-  static const Duration _timeout = Duration(seconds: 60);
+  static const Duration _timeout = Duration(seconds: 180);
   static const int _maxAttempts = 2;
   static const Duration _retryDelay = Duration(seconds: 3);
 
