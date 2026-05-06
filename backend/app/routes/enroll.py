@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import logging
 import traceback
@@ -17,23 +18,36 @@ router = APIRouter(tags=["voice"])
 MODAL_ENDPOINT_URL = "https://chrisaintscared--voice-verification-voiceverifier-extrac-e0e52a.modal.run/"
 
 async def _get_embedding_from_modal(audio_bytes: bytes) -> np.ndarray:
+    """Send audio to Modal, poll until result is ready."""
     audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
 
-    async with httpx.AsyncClient(timeout=180.0, follow_redirects=True) as client:
-        try:
-            response = await client.post(
-                MODAL_ENDPOINT_URL,
-                json={"audio_b64": audio_b64},
-            )
-            response.raise_for_status()
-        except httpx.TimeoutException:
+    async with httpx.AsyncClient(timeout=30.0, follow_redirects=False) as client:
+        # Initial POST
+        response = await client.post(
+            MODAL_ENDPOINT_URL,
+            json={"audio_b64": audio_b64},
+        )
+
+        # Poll on 303 redirects
+        max_polls = 40  # 40 x 5s = 200s max
+        polls = 0
+        while response.status_code == 303 and polls < max_polls:
+            poll_url = response.headers.get("location")
+            if not poll_url:
+                raise HTTPException(status_code=502, detail="Modal redirect missing location header.")
+            logger.info("Modal polling attempt %d: %s", polls + 1, poll_url)
+            await asyncio.sleep(5)
+            response = await client.get(poll_url)
+            polls += 1
+
+        if response.status_code == 303:
             raise HTTPException(status_code=504, detail="Voice processing timed out. Please try again.")
-        except httpx.HTTPStatusError as e:
-            logger.error("Modal returned error: %s", e.response.text)
+
+        if response.status_code != 200:
+            logger.error("Modal error %d: %s", response.status_code, response.text)
             raise HTTPException(status_code=502, detail="Voice service error.")
 
     data = response.json()
-
     if "error" in data:
         raise HTTPException(status_code=400, detail=data["error"])
 
