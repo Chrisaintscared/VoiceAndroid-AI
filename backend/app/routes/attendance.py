@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["attendance"])
 
 # ── Tuning constants ──────────────────────────────────────────────────────────
-SIMILARITY_THRESHOLD = 0.85
+SIMILARITY_THRESHOLD = 0.65
 MODAL_ENDPOINT_URL = "https://chrisaintscared--voice-verification-voiceverifier-extrac-e0e52a.modal.run/"
 
 # ── Modal call ────────────────────────────────────────────────────────────────

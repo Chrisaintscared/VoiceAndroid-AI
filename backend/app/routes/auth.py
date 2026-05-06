@@ -33,7 +33,7 @@ log = logging.getLogger("VoiceAndroid.auth")
 
 router = APIRouter(tags=["auth"])
 
-VOICE_MATCH_THRESHOLD: float = 0.75
+VOICE_MATCH_THRESHOLD: float = 0.65
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -39,7 +39,7 @@ class Settings(BaseSettings):
 
     # ── Voice / ML ────────────────────────────────────────────────────────────
 
-    voice_similarity_threshold: float = 0.75    # cosine similarity accept threshold
+    voice_similarity_threshold: float = 0.65    # cosine similarity accept threshold
 
     # ── General ───────────────────────────────────────────────────────────────
 
