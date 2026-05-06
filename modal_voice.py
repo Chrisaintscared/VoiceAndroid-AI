@@ -6,7 +6,8 @@ app = modal.App("voice-verification")
 image = (
     modal.Image.debian_slim()
     .pip_install(
-        "speechbrain==1.0.0",
+        "huggingface_hub==0.23.4",
+        "speechbrain==1.0.2",
         "torch==2.2.2",
         "torchaudio==2.2.2",
         "pydub==0.25.1",
@@ -14,9 +15,17 @@ image = (
         "fastapi[standard]",
         "requests",
     )
+    .run_commands(
+        "python -c \""
+        "from speechbrain.inference.speaker import SpeakerRecognition; "
+        "SpeakerRecognition.from_hparams("
+        "source='speechbrain/spkrec-ecapa-voxceleb', "
+        "savedir='/opt/pretrained_models/spkrec-ecapa', "
+        "run_opts={'device': 'cpu'}"
+        ")\""
+    )
 )
 
-# ── Load model once at container startup ──────────────────────────────────────
 with image.imports():
     import base64
     import gc
@@ -29,8 +38,8 @@ with image.imports():
     image=image,
     cpu=1,
     memory=2048,
-    timeout=60,
-    scaledown_window=300,
+    timeout=120,
+    scaledown_window=60,
 )
 class VoiceVerifier:
 
@@ -39,7 +48,7 @@ class VoiceVerifier:
         """Runs once when the container starts — model stays in memory."""
         self.verifier = SpeakerRecognition.from_hparams(
             source="speechbrain/spkrec-ecapa-voxceleb",
-            savedir="/tmp/pretrained_models/spkrec-ecapa",
+            savedir="/opt/pretrained_models/spkrec-ecapa",
             run_opts={"device": "cpu"},
         )
         for param in self.verifier.mods.parameters():
