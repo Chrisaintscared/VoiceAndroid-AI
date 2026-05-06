@@ -521,3 +521,26 @@ def get_join_request_status(class_id: int, student_id: int):
         return cur.fetchone()
     finally:
         conn.close()
+        
+        
+        # Add this after get_join_request_status()
+
+def get_pending_requests_for_student(student_id: int):
+    conn = get_connection()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute(
+            """
+            SELECT jr.class_id, c.name AS class_name,
+                   u.name AS teacher_name, jr.status
+            FROM join_requests jr
+            JOIN classes c ON c.id = jr.class_id
+            JOIN users u ON u.id = c.teacher_id
+            WHERE jr.student_id = %s AND jr.status = 'pending'
+            ORDER BY jr.requested_at DESC
+            """,
+            (student_id,),
+        )
+        return cur.fetchall()
+    finally:
+        conn.close()

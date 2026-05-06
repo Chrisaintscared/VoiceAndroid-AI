@@ -45,7 +45,16 @@ class _ClassRequestsScreenState extends State<ClassRequestsScreen> {
     }
   }
 
-  Future<void> _approve(int classId, int studentId) async {
+  Future<void> _approve(
+      int classId, int studentId, String studentName, String className) async {
+    final confirmed = await _showConfirmationDialog(
+      title: 'Approve Request',
+      message: 'Allow $studentName to join $className?',
+      confirmLabel: 'Approve',
+      confirmColor: _green,
+    );
+    if (!confirmed) return;
+
     try {
       await ClassService.approveRequest(classId, studentId);
       _showSnack('Student approved ✓', _green);
@@ -55,7 +64,16 @@ class _ClassRequestsScreenState extends State<ClassRequestsScreen> {
     }
   }
 
-  Future<void> _decline(int classId, int studentId) async {
+  Future<void> _decline(
+      int classId, int studentId, String studentName, String className) async {
+    final confirmed = await _showConfirmationDialog(
+      title: 'Decline Request',
+      message: 'Decline $studentName\'s request to join $className?',
+      confirmLabel: 'Decline',
+      confirmColor: _danger,
+    );
+    if (!confirmed) return;
+
     try {
       await ClassService.declineRequest(classId, studentId);
       _showSnack('Request declined', _textSub);
@@ -63,6 +81,81 @@ class _ClassRequestsScreenState extends State<ClassRequestsScreen> {
     } catch (e) {
       _showSnack(e.toString(), _danger);
     }
+  }
+
+  Future<bool> _showConfirmationDialog({
+    required String title,
+    required String message,
+    required String confirmLabel,
+    required Color confirmColor,
+  }) async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.6),
+      builder: (context) => Dialog(
+        backgroundColor: _surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: confirmColor.withOpacity(0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  confirmLabel == 'Approve'
+                      ? Icons.check_circle_outline_rounded
+                      : Icons.remove_circle_outline_rounded,
+                  color: confirmColor,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                title,
+                style: const TextStyle(
+                  color: _textPrimary,
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                message,
+                style: const TextStyle(color: _textSub, fontSize: 14),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: _ActionButton(
+                      label: 'Cancel',
+                      color: _textSub,
+                      outlined: true,
+                      onTap: () => Navigator.pop(context, false),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _ActionButton(
+                      label: confirmLabel,
+                      color: confirmColor,
+                      onTap: () => Navigator.pop(context, true),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    return result ?? false;
   }
 
   void _showSnack(String msg, Color color) {
@@ -274,7 +367,8 @@ class _ClassRequestsScreenState extends State<ClassRequestsScreen> {
                   label: 'Decline',
                   color: _danger,
                   outlined: true,
-                  onTap: () => _decline(classId, studentId),
+                  onTap: () =>
+                      _decline(classId, studentId, studentName, className),
                 ),
               ),
               const SizedBox(width: 12),
@@ -282,7 +376,8 @@ class _ClassRequestsScreenState extends State<ClassRequestsScreen> {
                 child: _ActionButton(
                   label: 'Approve',
                   color: _green,
-                  onTap: () => _approve(classId, studentId),
+                  onTap: () =>
+                      _approve(classId, studentId, studentName, className),
                 ),
               ),
             ],

@@ -21,37 +21,38 @@ from app.security import get_current_user
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["attendance"])
 
-# ── Tuning constants ──────────────────────────────────────────────────────────
 SIMILARITY_THRESHOLD = 0.65
 MODAL_ENDPOINT_URL = "https://chrisaintscared--voice-verification-voiceverifier-extrac-e0e52a.modal.run/"
 
-# ── Modal call ────────────────────────────────────────────────────────────────
 
 async def _get_embedding_from_modal(audio_bytes: bytes) -> np.ndarray:
-    """Send audio to Modal, poll until result is ready."""
     audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
 
     async with httpx.AsyncClient(timeout=180.0, follow_redirects=False) as client:
-        # Initial POST
         response = await client.post(
             MODAL_ENDPOINT_URL,
             json={"audio_b64": audio_b64},
         )
 
-        # Poll on 303 redirects
-        max_polls = 40  # 40 x 5s = 200s max
+        max_polls = 40
         polls = 0
         while response.status_code == 303 and polls < max_polls:
             poll_url = response.headers.get("location")
             if not poll_url:
-                raise HTTPException(status_code=502, detail="Modal redirect missing location header.")
+                raise HTTPException(
+                    status_code=502,
+                    detail="Modal redirect missing location header.",
+                )
             logger.info("Modal polling attempt %d: %s", polls + 1, poll_url)
             await asyncio.sleep(5)
             response = await client.get(poll_url)
             polls += 1
 
         if response.status_code == 303:
-            raise HTTPException(status_code=504, detail="Voice processing timed out. Please try again.")
+            raise HTTPException(
+                status_code=504,
+                detail="Voice processing timed out. Please try again.",
+            )
 
         if response.status_code != 200:
             logger.error("Modal error %d: %s", response.status_code, response.text)
@@ -63,8 +64,6 @@ async def _get_embedding_from_modal(audio_bytes: bytes) -> np.ndarray:
 
     return np.array(data["embedding"])
 
-
-# ── Routes ────────────────────────────────────────────────────────────────────
 
 @router.post("/mark")
 async def mark_attendance(
@@ -91,26 +90,35 @@ async def mark_attendance(
 
     try:
         audio_bytes = await audio.read()
-        logger.info("Audio received: %d bytes for user_id=%s", len(audio_bytes), user["id"])
+        logger.info(
+            "Audio received: %d bytes for user_id=%s", len(audio_bytes), user["id"]
+        )
 
         live_emb = await _get_embedding_from_modal(audio_bytes)
-
         stored_emb = np.array(stored["embedding"])
 
-        logger.info("Live embedding norm:   %.6f", float(np.linalg.norm(live_emb)))
-        logger.info("Stored embedding norm: %.6f", float(np.linalg.norm(stored_emb)))
+        logger.info(
+            "Live embedding norm:   %.6f", float(np.linalg.norm(live_emb))
+        )
+        logger.info(
+            "Stored embedding norm: %.6f", float(np.linalg.norm(stored_emb))
+        )
 
         similarity = float(np.dot(live_emb, stored_emb))
 
         logger.info(
             "Voice similarity score: %.4f (threshold: %.2f) user_id=%s",
-            similarity, SIMILARITY_THRESHOLD, user["id"],
+            similarity,
+            SIMILARITY_THRESHOLD,
+            user["id"],
         )
 
         if similarity < SIMILARITY_THRESHOLD:
             logger.info(
                 "REJECTED: score %.4f below threshold %.2f for user_id=%s",
-                similarity, SIMILARITY_THRESHOLD, user["id"],
+                similarity,
+                SIMILARITY_THRESHOLD,
+                user["id"],
             )
             raise HTTPException(
                 status_code=401,
@@ -119,7 +127,9 @@ async def mark_attendance(
 
         logger.info(
             "ACCEPTED: score %.4f for user_id=%s class_id=%s",
-            similarity, user["id"], class_id,
+            similarity,
+            user["id"],
+            class_id,
         )
 
         save_attendance(
@@ -128,7 +138,13 @@ async def mark_attendance(
             class_id=class_id,
         )
 
-        return {"status": "success", "confidence": round(similarity * 100, 2)}
+        # ── Always return matched_name so Flutter displays the right name ──
+        return {
+            "status": "success",
+            "confidence": round(similarity * 100, 2),
+            "matched_name": user["name"],
+            "user_name": user["name"],
+        }
 
     except HTTPException:
         raise
@@ -147,7 +163,9 @@ async def get_logs(
         return {"logs": logs}
     except Exception:
         logger.error(traceback.format_exc())
-        raise HTTPException(status_code=500, detail="Failed to load attendance logs.")
+        raise HTTPException(
+            status_code=500, detail="Failed to load attendance logs."
+        )
 
 
 @router.get("/test")

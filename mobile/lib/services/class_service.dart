@@ -14,8 +14,6 @@ class ClassService {
     };
   }
 
-  /// Safely decodes a response body, throwing a readable error if the
-  /// server returned HTML (e.g. a 500 crash page) instead of JSON.
   static dynamic _decode(http.Response res) {
     final contentType = res.headers['content-type'] ?? '';
     if (!contentType.contains('application/json')) {
@@ -36,7 +34,6 @@ class ClassService {
     throw Exception(data['detail'] ?? 'Failed to create class');
   }
 
-  /// Sends a join request — teacher must approve before student is enrolled.
   static Future<String> joinClass(String code) async {
     final res = await http.post(
       Uri.parse('$baseUrl/classes/join'),
@@ -57,12 +54,29 @@ class ClassService {
     );
     final data = _decode(res);
     if (res.statusCode == 200) {
-      return List<Map<String, dynamic>>.from(data);
+      return (data as List)
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
     }
     throw Exception(data['detail'] ?? 'Failed to load classes');
   }
 
-  /// Teacher: get all pending requests across all their classes.
+  // ── NEW: properly implemented getMyPendingRequests ─────────────────────
+  /// Student: get all their own pending join requests across all classes.
+  static Future<List<Map<String, dynamic>>> getMyPendingRequests() async {
+    final res = await http.get(
+      Uri.parse('$baseUrl/classes/my-pending-requests'),
+      headers: await _headers(),
+    );
+    final data = _decode(res);
+    if (res.statusCode == 200) {
+      return (data as List)
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+    }
+    throw Exception(data['detail'] ?? 'Failed to load pending requests');
+  }
+
   static Future<List<Map<String, dynamic>>> getAllPendingRequests() async {
     final res = await http.get(
       Uri.parse('$baseUrl/classes/requests'),
@@ -70,12 +84,13 @@ class ClassService {
     );
     final data = _decode(res);
     if (res.statusCode == 200) {
-      return List<Map<String, dynamic>>.from(data);
+      return (data as List)
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
     }
     throw Exception(data['detail'] ?? 'Failed to load requests');
   }
 
-  /// Teacher: get pending requests for a specific class.
   static Future<List<Map<String, dynamic>>> getClassRequests(
       int classId) async {
     final res = await http.get(
@@ -84,7 +99,9 @@ class ClassService {
     );
     final data = _decode(res);
     if (res.statusCode == 200) {
-      return List<Map<String, dynamic>>.from(data);
+      return (data as List)
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
     }
     throw Exception(data['detail'] ?? 'Failed to load requests');
   }
@@ -118,7 +135,9 @@ class ClassService {
     );
     final data = _decode(res);
     if (res.statusCode == 200) {
-      return List<Map<String, dynamic>>.from(data);
+      return (data as List)
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
     }
     throw Exception(data['detail'] ?? 'Failed to load members');
   }
@@ -132,11 +151,12 @@ class ClassService {
       Uri.parse('$baseUrl/classes/$classId/attendance'),
       headers: await _headers(),
     );
-    // ✅ Check content-type FIRST — crashes here before if server sent HTML
     final data = _decode(res);
     if (res.statusCode == 200) {
-      // ✅ Null-safe: fall back to empty list if 'logs' key is missing
-      return List<Map<String, dynamic>>.from(data['logs'] ?? []);
+      // Backend now returns a flat list directly (not wrapped in {"logs": [...]})
+      return (data as List)
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
     }
     throw Exception(data['detail'] ?? 'Failed to load attendance');
   }
@@ -153,7 +173,6 @@ class ClassService {
     final streamed = await req.send();
     final body = await streamed.stream.bytesToString();
     if (streamed.statusCode != 200) {
-      // ✅ Guard multipart response too
       final ct = streamed.headers['content-type'] ?? '';
       if (!ct.contains('application/json')) {
         throw Exception(

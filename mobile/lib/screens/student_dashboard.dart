@@ -13,6 +13,7 @@ class StudentDashboard extends StatefulWidget {
 
 class _StudentDashboardState extends State<StudentDashboard> {
   List<Map<String, dynamic>> _classes = [];
+  List<Map<String, dynamic>> _pendingRequests = [];
   bool _isLoading = true;
   String _userName = '';
   String _userEmail = '';
@@ -29,6 +30,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
   static const _cyanDim = Color(0xFF0099BB);
   static const _success = Color(0xFF00E5A0);
   static const _danger = Color(0xFFFF5B7F);
+  static const _warning = Color(0xFFFFB347);
   static const _textPrimary = Color(0xFFF0F6FF);
   static const _textSub = Color(0xFF7EA8C4);
   static const _textMuted = Color(0xFF4A7090);
@@ -54,7 +56,17 @@ class _StudentDashboardState extends State<StudentDashboard> {
       _userName = user?['name'] ?? 'Student';
       _userEmail = user?['email'] ?? '';
       final classes = await ClassService.getMyClasses();
-      if (mounted) setState(() => _classes = classes);
+      final pending = await ClassService.getMyPendingRequests();
+      if (mounted) {
+        setState(() {
+          _classes = (classes as List)
+              .map((e) => Map<String, dynamic>.from(e as Map))
+              .toList();
+          _pendingRequests = (pending as List)
+              .map((e) => Map<String, dynamic>.from(e as Map))
+              .toList();
+        });
+      }
     } catch (e) {
       _showSnack('Failed to load: $e', error: true);
     } finally {
@@ -194,6 +206,170 @@ class _StudentDashboardState extends State<StudentDashboard> {
     }
   }
 
+  // ── Pending requests bottom sheet ──────────────────────────────────────
+  void _showPendingSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: _surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.5,
+        minChildSize: 0.3,
+        maxChildSize: 0.85,
+        expand: false,
+        builder: (_, scrollController) => ListView(
+          controller: scrollController,
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+          children: [
+            // drag handle
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: _navyLight,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(7),
+                  decoration: BoxDecoration(
+                    color: _warning.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: _warning.withOpacity(0.3)),
+                  ),
+                  child: const Icon(Icons.hourglass_top_rounded,
+                      color: _warning, size: 16),
+                ),
+                const SizedBox(width: 10),
+                const Text(
+                  'Pending Requests',
+                  style: TextStyle(
+                      color: _textPrimary,
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold),
+                ),
+                const Spacer(),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: _warning.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: _warning.withOpacity(0.3)),
+                  ),
+                  child: Text(
+                    '${_pendingRequests.length}',
+                    style: const TextStyle(
+                        color: _warning,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Waiting for teacher approval',
+              style: TextStyle(color: _textMuted, fontSize: 12),
+            ),
+            const SizedBox(height: 16),
+            ..._pendingRequests.map((req) {
+              final className = req['class_name'] ?? 'Unknown Class';
+              final teacherName = req['teacher_name'] ?? '';
+              final initial =
+                  className.isNotEmpty ? className[0].toUpperCase() : '?';
+              return Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: _navyMid,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: _warning.withOpacity(0.2)),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: _warning.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: _warning.withOpacity(0.3)),
+                      ),
+                      child: Center(
+                        child: Text(initial,
+                            style: const TextStyle(
+                                color: _warning,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(className,
+                              style: const TextStyle(
+                                  color: _textPrimary,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 14)),
+                          if (teacherName.isNotEmpty) ...[
+                            const SizedBox(height: 3),
+                            Row(
+                              children: [
+                                const Icon(Icons.person_rounded,
+                                    size: 11, color: _textMuted),
+                                const SizedBox(width: 4),
+                                Text(teacherName,
+                                    style: const TextStyle(
+                                        color: _textSub, fontSize: 12)),
+                              ],
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: _warning.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: _warning.withOpacity(0.3)),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.hourglass_top_rounded,
+                              size: 10, color: _warning),
+                          SizedBox(width: 4),
+                          Text('Pending',
+                              style: TextStyle(
+                                  color: _warning,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
+          ],
+        ),
+      ),
+    );
+  }
+
   // ── Snack ──────────────────────────────────────────────────────────────
   void _showSnack(String msg, {bool error = false}) {
     if (!mounted) return;
@@ -329,6 +505,8 @@ class _StudentDashboardState extends State<StudentDashboard> {
                     child: CustomScrollView(
                       slivers: [
                         SliverToBoxAdapter(child: _buildProfileCard()),
+                        if (_pendingRequests.isNotEmpty)
+                          SliverToBoxAdapter(child: _buildPendingBanner()),
                         SliverToBoxAdapter(child: _buildSectionHeader()),
                         if (_classes.isEmpty)
                           const SliverFillRemaining(
@@ -362,6 +540,56 @@ class _StudentDashboardState extends State<StudentDashboard> {
                   ),
           ),
         ],
+      ),
+    );
+  }
+
+  // ── Pending banner ─────────────────────────────────────────────────────
+  Widget _buildPendingBanner() {
+    return GestureDetector(
+      onTap: _showPendingSheet,
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: _warning.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: _warning.withOpacity(0.35)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: _warning.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.hourglass_top_rounded,
+                  color: _warning, size: 15),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${_pendingRequests.length} pending join ${_pendingRequests.length == 1 ? 'request' : 'requests'}',
+                    style: const TextStyle(
+                        color: _warning,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 1),
+                  const Text(
+                    'Waiting for teacher approval',
+                    style: TextStyle(color: _textMuted, fontSize: 11),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded, color: _warning, size: 18),
+          ],
+        ),
       ),
     );
   }
@@ -538,45 +766,6 @@ class _StudentDashboardState extends State<StudentDashboard> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Top Bar Action
-// ─────────────────────────────────────────────────────────────────────────────
-
-// ignore: unused_element
-class _TopBarAction extends StatelessWidget {
-  final IconData icon;
-  final Color color;
-  final String tooltip;
-  final VoidCallback onTap;
-
-  const _TopBarAction({
-    required this.icon,
-    required this.color,
-    required this.tooltip,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: tooltip,
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          margin: const EdgeInsets.only(left: 6),
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.12),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: color.withOpacity(0.3)),
-          ),
-          child: Icon(icon, color: color, size: 16),
-        ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 //  Nav Item
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -679,7 +868,10 @@ class _ClassCard extends StatelessWidget {
               height: 48,
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [_cyan.withOpacity(0.3), _cyan.withOpacity(0.1)],
+                  colors: [
+                    _cyan.withOpacity(0.3),
+                    _cyan.withOpacity(0.1),
+                  ],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
