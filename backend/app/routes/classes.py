@@ -247,4 +247,39 @@ def get_members(class_id: int, user=Depends(get_current_user)):
 
 @router.get("/{class_id}/attendance")
 def get_attendance(class_id: int, user=Depends(get_current_user)):
-    conn
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+
+        if user["role"] == "teacher":
+            cur.execute(
+                """
+                SELECT user_name, timestamp
+                FROM attendance_logs
+                WHERE class_id = %s
+                ORDER BY timestamp DESC
+                """,
+                (class_id,),
+            )
+        else:
+            cur.execute(
+                """
+                SELECT user_name, timestamp
+                FROM attendance_logs
+                WHERE class_id = %s AND user_id = %s
+                ORDER BY timestamp DESC
+                """,
+                (class_id, user["id"]),
+            )
+
+        rows = cur.fetchall()
+        return [{"user_name": r[0], "timestamp": str(r[1])} for r in rows]
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to load attendance: {str(e)}"
+        )
+    finally:
+        conn.close()  # ← was missing .close()
