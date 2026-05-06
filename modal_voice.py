@@ -5,6 +5,7 @@ app = modal.App("voice-verification")
 
 image = (
     modal.Image.debian_slim()
+    .apt_install("ffmpeg")
     .pip_install(
         "huggingface_hub==0.23.4",
         "speechbrain==1.0.2",
